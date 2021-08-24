@@ -2,9 +2,12 @@
 
 module Main where
 
+import Data.Functor.Identity
+
 import Text.Parsec
 import Text.Parsec.String
 import Text.Parsec.Combinator
+import Text.Parsec.Expr
 
 ------------
 -- Syntax --
@@ -12,13 +15,14 @@ import Text.Parsec.Combinator
 
 type Name = String
 data Expr
-    = EIf Expr Expr Expr
+    = EVar Name
+    | EIf Expr Expr Expr
     | EAbs Name Expr
     | EApp Expr Expr
     | ELet Name Expr Expr
     | EInt Integer
     | EBool Bool
-    | EBin Expr Oper Expr
+    | EBin Oper Expr Expr
     deriving Show
 data Oper = Add | Sub deriving Show
 
@@ -36,8 +40,15 @@ pattern a :-> b = TCon "->" [a, b]
 -- Parser --
 ------------
 
+operTable :: OperatorTable String () Identity Expr
+operTable = [[Infix (spaces *> char '+' <* spaces >> return (EBin Add)) AssocLeft
+            , Infix (spaces *> char '-' <* spaces >> return (EBin Sub)) AssocLeft]]
+
 parseExpr :: Parser Expr
-parseExpr = parseIf <|> parseAbs <|> parseLet <|> parseLit <|> parseApp
+parseExpr = buildExpressionParser operTable parseTerm
+
+parseTerm :: Parser Expr
+parseTerm = try parseApp <|> parseIf <|> parseAbs <|> parseLet <|> parseLit 
 
 parseIf :: Parser Expr
 parseIf = do
@@ -75,6 +86,7 @@ parseLit :: Parser Expr
 parseLit = (EInt . read <$> many1 digit)
         <|> (EBool True <$ string "True") <|> (EBool False <$ string "False")
         <|> (char '(' *> parseExpr <* char ')')
+        <|> (EVar <$> many1 alphaNum)
 
 runParse :: String -> Either String Expr
 runParse input =
